@@ -5,6 +5,7 @@ on:
     branches: ["dev"]          # Runs when code is pushed to the dev branch
   pull_request:
     branches: ["main"]         # Runs when a PR is opened/updated targeting main
+  workflow_dispatch:
 
 jobs:
   security:
