@@ -75,12 +75,12 @@ jobs:
         run: snyk iac test --org=${{ vars.SNYK_ORG }} --severity-threshold=high
 
       # Snyk IaC snapshot: IaC has no `monitor`, so --report sends results to the Snyk UI
-      # - name: Snyk IaC snapshot
-      #  continue-on-error: true
-      #  run: |
-      #    snyk iac test --org=${{ vars.SNYK_ORG }} --report \
-      #      --remote-repo-url=$REPO_URL \
-      #      --target-reference=$BRANCH
+      - name: Snyk IaC snapshot
+        continue-on-error: true
+        run: |
+          snyk iac test --org=${{ vars.SNYK_ORG }} --report \
+            --remote-repo-url=$REPO_URL \
+            --target-reference=$BRANCH
 
       # Build the image from the Dockerfile in this repo's root; this is the image Snyk scans
       - name: Build Docker image
@@ -90,9 +90,9 @@ jobs:
       # --file=Dockerfile lets Snyk give base image upgrade recommendations
       - name: Snyk Container
         continue-on-error: true
-        run: snyk container test $IMAGE --file=Dockerfile --severity-threshold=high
+        run: snyk container test --org=${{ vars.SNYK_ORG }} $IMAGE --file=Dockerfile --severity-threshold=high
 
       # Snyk Container monitor: snapshot of the image to the Snyk UI
       - name: Snyk Container monitor
         continue-on-error: true
-        run: snyk container monitor $IMAGE --file=Dockerfile
+        run: snyk container monitor --org=${{ vars.SNYK_ORG }} $IMAGE --file=Dockerfile
