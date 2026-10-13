@@ -14,7 +14,7 @@ jobs:
     env:                       # Variables available to every step in this job
       SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}                  # Snyk auth token, read from repo secrets
       BRANCH: ${{ github.head_ref || github.ref_name }}      # PR source branch, or the pushed branch on a push
-      REPO_URL: github.com/mawidors/Demo                     # Repo URL Snyk shows for these snapshots
+      REPO_URL: github.com/mawidors/nodejs-goof              # Repo URL Snyk shows for these snapshots
       PROJECT: demoapp                                       # Project name used in the Snyk UI
       IMAGE: demoapp:${{ github.sha }}                       # Name:tag of the image built from this repo's Dockerfile
 
