@@ -13,10 +13,11 @@ jobs:
 
     env:                       # Variables available to every step in this job
       SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}                  # Snyk auth token, read from repo secrets
-      BRANCH: ${{ github.ref_name }}                         # PR source branch, or the pushed branch on a push
+      BRANCH: ${{ github.head_ref || github.ref_name }}                         # PR source branch, or the pushed branch on a push
       REPO_URL: github.com/mawidors/nodejs-goof              # Repo URL Snyk shows for these snapshots
       PROJECT: demoapp                                       # Project name used in the Snyk UI
-      IMAGE: demoapp:${{ github.sha }}                       # Name:tag of the image built from this repo's Dockerfile
+      TAGS: app=demoapp
+      IMAGE: github.com/mawidors/nodejs-goof:${{ github.sha }}                       # Name:tag of the image built from this repo's Dockerfile
 
     steps:
       # Step 1: Pull this repo's code onto the runner
@@ -36,7 +37,7 @@ jobs:
       # continue-on-error: true keeps the pipeline green even if issues are found
       - name: Snyk Code
         continue-on-error: true
-        run: snyk code test --severity-threshold=high
+        run: snyk code test --org=${{ vars.SNYK_ORG }} --severity-threshold=high
 
       # Snyk Code snapshot: sends results to the Snyk UI, tagged with the branch
       - name: Snyk Code snapshot
@@ -45,7 +46,8 @@ jobs:
           snyk code test --org=${{ vars.SNYK_ORG }} --severity-threshold=high --report \
             --project-name=code-analysis \
             --remote-repo-url=$REPO_URL \
-            --target-reference=$BRANCH
+            --target-reference=$BRANCH \
+            --project-tags=$TAGS
 
       # Step 4: Install the project's own dependencies (package.json) so Snyk can resolve them
       - name: Install dependencies
@@ -65,9 +67,9 @@ jobs:
       - name: Snyk Open Source monitor
         run: |
           snyk monitor --org=${{ vars.SNYK_ORG }} \
-            --project-name=SCA \
             --remote-repo-url=$REPO_URL \
-            --target-reference=$BRANCH 
+            --target-reference=$BRANCH \
+            --project-tags=$TAGS
 
       # Snyk IaC: scans Terraform/Kubernetes/etc. files in the repo (finds nothing if there are none)
       - name: Snyk IaC
@@ -80,7 +82,8 @@ jobs:
         run: |
           snyk iac test --org=${{ vars.SNYK_ORG }} --report \
             --remote-repo-url=$REPO_URL \
-            --target-reference=$BRANCH
+            --target-reference=$BRANCH \
+            --project-tags=$TAGS
 
       # Build the image from the Dockerfile in this repo's root; this is the image Snyk scans
       - name: Build Docker image
@@ -98,4 +101,5 @@ jobs:
         run: |
           snyk container monitor --org=${{ vars.SNYK_ORG }} $IMAGE --file=Dockerfile \
             --project-name=container \
-            --target-reference="$BRANCH"
+            --target-reference="$BRANCH" \
+            --project-tags=$TAGS
