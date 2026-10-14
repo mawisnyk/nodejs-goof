@@ -13,7 +13,7 @@ jobs:
 
     env:                       # Variables available to every step in this job
       SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}                  # Snyk auth token, read from repo secrets
-      BRANCH: ${{ github.head_ref || github.ref_name }}      # PR source branch, or the pushed branch on a push
+      BRANCH: ${{ github.ref_name }}                         # PR source branch, or the pushed branch on a push
       REPO_URL: github.com/mawidors/nodejs-goof              # Repo URL Snyk shows for these snapshots
       PROJECT: demoapp                                       # Project name used in the Snyk UI
       IMAGE: demoapp:${{ github.sha }}                       # Name:tag of the image built from this repo's Dockerfile
@@ -43,7 +43,7 @@ jobs:
         continue-on-error: true
         run: |
           snyk code test --org=${{ vars.SNYK_ORG }} --severity-threshold=high --report \
-            --project-name=$PROJECT \
+            --project-name=code-analysis \
             --remote-repo-url=$REPO_URL \
             --target-reference=$BRANCH
 
@@ -65,7 +65,7 @@ jobs:
       - name: Snyk Open Source monitor
         run: |
           snyk monitor --org=${{ vars.SNYK_ORG }} \
-            --project-name=$PROJECT \
+            --project-name=SCA \
             --remote-repo-url=$REPO_URL \
             --target-reference=$BRANCH 
 
@@ -97,5 +97,5 @@ jobs:
         continue-on-error: true
         run: |
           snyk container monitor --org=${{ vars.SNYK_ORG }} $IMAGE --file=Dockerfile \
-            --project-name="$PROJECT-container" \
+            --project-name=container \
             --target-reference="$BRANCH"
