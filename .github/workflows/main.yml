@@ -95,4 +95,7 @@ jobs:
       # Snyk Container monitor: snapshot of the image to the Snyk UI
       - name: Snyk Container monitor
         continue-on-error: true
-        run: snyk container monitor --org=${{ vars.SNYK_ORG }} $IMAGE --file=Dockerfile
+        run: |
+          snyk container monitor --org=${{ vars.SNYK_ORG }} $IMAGE --file=Dockerfile \
+            --project-name="$PROJECT-container" \
+            --target-reference="$BRANCH"
