@@ -16,7 +16,7 @@ jobs:
       SNYK_ORG: ${{ vars.SNYK_ORG }}
       BRANCH: ${{ github.head_ref || github.ref_name }}
       # Full URL, identical in every snapshot command. This is what groups projects into one target.
-      REPO_URL: github.com/mawisnyk/nodejs-goof
+      REPO_URL: github.com/${{ github.repository }}
       IMAGE: nodejs-goof:${{ github.sha }}
 
     steps:
