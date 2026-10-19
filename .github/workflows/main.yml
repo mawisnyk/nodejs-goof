@@ -81,5 +81,4 @@ jobs:
 
       - name: Snyk Container monitor
         run: |
-          snyk container monitor $IMAGE --org=$SNYK_ORG --file=Dockerfile \
-            --project-name=container 
+          snyk container monitor $IMAGE --org=$SNYK_ORG --file=Dockerfile
