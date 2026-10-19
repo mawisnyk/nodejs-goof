@@ -1,4 +1,4 @@
-name: Snyk CI/CD Demo
+name: Snyk CI/CD Demo - output
 
 on:
   push:
