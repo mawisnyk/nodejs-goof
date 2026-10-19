@@ -2,104 +2,82 @@ name: Snyk CI/CD Demo
 
 on:
   push:
-    branches: ["dev"]          # Runs when code is pushed to the dev branch
+    branches: ["dev"]
   pull_request:
-    branches: ["main"]         # Runs when a PR is opened/updated targeting main
+    branches: ["main"]
   workflow_dispatch:
 
 jobs:
   security:
-    runs-on: ubuntu-latest     # Fresh GitHub-hosted Ubuntu VM (Node and Docker preinstalled)
+    runs-on: ubuntu-latest
 
-    env:                       # Variables available to every step in this job
-      SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}                  # Snyk auth token, read from repo secrets
-      BRANCH: ${{ github.head_ref || github.ref_name }}                         # PR source branch, or the pushed branch on a push
-      REPO_URL: github.com/mawidors/nodejs-goof              # Repo URL Snyk shows for these snapshots
-      PROJECT: demoapp                                       # Project name used in the Snyk UI
-      TAGS: app=demoapp
-      IMAGE: github.com/mawidors/nodejs-goof:${{ github.sha }}                       # Name:tag of the image built from this repo's Dockerfile
+    env:
+      SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+      SNYK_ORG: ${{ vars.SNYK_ORG }}
+      BRANCH: ${{ github.head_ref || github.ref_name }}
+      # Full URL, identical in every snapshot command. This is what groups projects into one target.
+      REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+      IMAGE: nodejs-goof:${{ github.sha }}
 
     steps:
-      # Step 1: Pull this repo's code onto the runner
       - uses: actions/checkout@v5
 
-      # Step 2: Install Node.js (needed to resolve dependencies and to install the Snyk CLI)
       - name: Set up Node
         uses: actions/setup-node@v5
         with:
           node-version: '24'
 
-      # Step 3: Install the Snyk CLI globally so `snyk` works in later steps
       - name: Install Snyk CLI
         run: npm install -g snyk
 
-      # Snyk Code (SAST): run before npm install so node_modules isn't scanned
-      # continue-on-error: true keeps the pipeline green even if issues are found
+      # Snyk Code: run before npm install so node_modules isn't scanned
+      # Snyk Code test and UI snapshot
       - name: Snyk Code
         continue-on-error: true
-        run: snyk code test --org=${{ vars.SNYK_ORG }} --severity-threshold=high
+        run: snyk code test --org=$SNYK_ORG --severity-threshold=high
 
-      # Snyk Code snapshot: sends results to the Snyk UI, tagged with the branch
       - name: Snyk Code snapshot
         continue-on-error: true
         run: |
-          snyk code test --org=${{ vars.SNYK_ORG }} --severity-threshold=high --report \
+          snyk code test --org=$SNYK_ORG --report \
             --project-name=code-analysis \
             --remote-repo-url=$REPO_URL \
-            --target-reference=$BRANCH \
-            --project-tags=$TAGS
+            --target-reference="$BRANCH"
 
-      # Step 4: Install the project's own dependencies (package.json) so Snyk can resolve them
       - name: Install dependencies
         run: npm install
 
-      # Snyk Open Source (SCA) test
-      # `|| true` means this step never fails the pipeline, even if issues are found
+      # Snyk SCA test and UI snapshot
+      # To gate the build, remove continue-on-error from the step below.
       - name: Snyk Open Source
         continue-on-error: true
-        run: snyk test --org=${{ vars.SNYK_ORG }} --severity-threshold=high
+        run: snyk test --org=$SNYK_ORG --severity-threshold=high
 
-      # To fail the build on High/Critical issues, delete the step above and uncomment this one
-      #- name: Snyk Open Source (gating)
-      #  run: snyk test --org=${{ vars.SNYK_ORG }} --severity-threshold=high
-
-      # Snyk Open Source monitor: snapshot to the Snyk UI for ongoing monitoring
       - name: Snyk Open Source monitor
         run: |
-          snyk monitor --org=${{ vars.SNYK_ORG }} \
-            --remote-repo-url=$REPO_URL \
-            --target-reference=$BRANCH \
-            --project-tags=$TAGS
-
-      # Snyk IaC: scans Terraform/Kubernetes/etc. files in the repo (finds nothing if there are none)
+          snyk monitor --org=$SNYK_ORG \
+            --target-reference="$BRANCH"
+            
+      # IaC test and UI snapshot
       - name: Snyk IaC
         continue-on-error: true
-        run: snyk iac test --org=${{ vars.SNYK_ORG }} --severity-threshold=high
+        run: snyk iac test --org=$SNYK_ORG --severity-threshold=high
 
-      # Snyk IaC snapshot: IaC has no `monitor`, so --report sends results to the Snyk UI
       - name: Snyk IaC snapshot
         continue-on-error: true
         run: |
-          snyk iac test --org=${{ vars.SNYK_ORG }} --report \
-            --remote-repo-url=$REPO_URL \
-            --target-reference=$BRANCH \
-            --project-tags=$TAGS
+          snyk iac test --org=$SNYK_ORG --report \
+            --target-reference="$BRANCH"
 
-      # Build the image from the Dockerfile in this repo's root; this is the image Snyk scans
       - name: Build Docker image
         run: docker build -t $IMAGE .
 
-      # Snyk Container: scans the built image, including its base image
-      # --file=Dockerfile lets Snyk give base image upgrade recommendations
+      # Snyk Container test and UI snapshot
       - name: Snyk Container
         continue-on-error: true
-        run: snyk container test --org=${{ vars.SNYK_ORG }} $IMAGE --file=Dockerfile --severity-threshold=high
+        run: snyk container test $IMAGE --org=$SNYK_ORG --file=Dockerfile --severity-threshold=high
 
-      # Snyk Container monitor: snapshot of the image to the Snyk UI
       - name: Snyk Container monitor
-        continue-on-error: true
         run: |
-          snyk container monitor --org=${{ vars.SNYK_ORG }} $IMAGE --file=Dockerfile \
-            --project-name=container \
-            --target-reference="$BRANCH" \
-            --project-tags=$TAGS
+          snyk container monitor $IMAGE --org=$SNYK_ORG --file=Dockerfile \
+            --project-name=container 
