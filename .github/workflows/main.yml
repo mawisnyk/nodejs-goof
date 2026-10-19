@@ -85,4 +85,5 @@ jobs:
       - name: Snyk Container monitor
         run: |
           snyk container monitor $IMAGE --org=$SNYK_ORG --file=Dockerfile \
-          --remote-repo-url=$REPO_URL
+            --remote-repo-url=$REPO_URL \
+            --target-reference="$BRANCH"
