@@ -1,4 +1,4 @@
-name: Snyk CI/CD Demo - output
+name: Snyk CI/CD Demo
 
 on:
   push:
@@ -49,6 +49,11 @@ jobs:
           snyk code test --org=$SNYK_ORG --severity-threshold=high \
             --sarif-file-output=snyk-code.sarif \
             --json-file-output=snyk-code.json
+
+      - name: Snyk Code HTML report
+        if: always() && hashFiles('snyk-code.json') != ''
+        continue-on-error: true
+        run: snyk-to-html -i snyk-code.json -o snyk-code.html
 
       # Snapshot to the Snyk UI
       - name: Snyk Code snapshot
