@@ -1,0 +1,178 @@
+name: Snyk CI/CD Demo
+
+on:
+  push:
+    branches: ["dev"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+# security-events: write is required to upload SARIF to GitHub Code Scanning.
+# Note: for private repositories, Code Scanning requires GitHub Advanced Security.
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  security:
+    runs-on: ubuntu-latest
+
+    env:
+      SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+      SNYK_ORG: ${{ vars.SNYK_ORG }}
+      BRANCH: ${{ github.head_ref || github.ref_name }}
+      # The URL must match the target Snyk derives from the git remote.
+      REPO_URL: github.com/${{ github.repository }}
+      IMAGE: nodejs-goof:${{ github.sha }}
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+
+      - name: Install Snyk CLI and HTML report tool
+        run: npm install -g snyk snyk-to-html
+
+      - name: Show repo URL
+        run: echo "$REPO_URL"
+
+      # ---------------------------------------------------------------
+      # Snyk Code: run before npm install so node_modules isn't scanned
+      # Test + export (SARIF for Code Scanning, JSON for artifacts)
+      # ---------------------------------------------------------------
+      - name: Snyk Code
+        continue-on-error: true
+        run: |
+          snyk code test --org=$SNYK_ORG --severity-threshold=high \
+            --sarif-file-output=snyk-code.sarif \
+            --json-file-output=snyk-code.json
+
+      # Snapshot to the Snyk UI
+      - name: Snyk Code snapshot
+        continue-on-error: true
+        run: |
+          snyk code test --org=$SNYK_ORG --report \
+            --project-name=code-analysis \
+            --remote-repo-url=$REPO_URL \
+            --target-reference="$BRANCH"
+
+      - name: Install dependencies
+        run: npm install
+
+      # ---------------------------------------------------------------
+      # Snyk Open Source (SCA)
+      # To gate the build, remove continue-on-error from the step below.
+      # ---------------------------------------------------------------
+      - name: Snyk Open Source
+        continue-on-error: true
+        run: |
+          snyk test --org=$SNYK_ORG --severity-threshold=high \
+            --sarif-file-output=snyk-oss.sarif \
+            --json-file-output=snyk-oss.json
+
+      - name: Snyk Open Source HTML report
+        if: always() && hashFiles('snyk-oss.json') != ''
+        continue-on-error: true
+        run: snyk-to-html -i snyk-oss.json -o snyk-oss.html
+
+      # Snapshot to the Snyk UI
+      - name: Snyk Open Source monitor
+        run: |
+          snyk monitor --org=$SNYK_ORG \
+            --remote-repo-url=$REPO_URL \
+            --target-reference="$BRANCH"
+
+      # ---------------------------------------------------------------
+      # Snyk IaC
+      # ---------------------------------------------------------------
+      - name: Snyk IaC
+        continue-on-error: true
+        run: |
+          snyk iac test --org=$SNYK_ORG --severity-threshold=high \
+            --sarif-file-output=snyk-iac.sarif \
+            --json-file-output=snyk-iac.json
+
+      - name: Snyk IaC HTML report
+        if: always() && hashFiles('snyk-iac.json') != ''
+        continue-on-error: true
+        run: snyk-to-html -i snyk-iac.json -o snyk-iac.html
+
+      # Snapshot to the Snyk UI
+      - name: Snyk IaC snapshot
+        continue-on-error: true
+        run: |
+          snyk iac test --org=$SNYK_ORG --report \
+            --remote-repo-url=$REPO_URL \
+            --target-reference="$BRANCH"
+
+      - name: Build Docker image
+        run: docker build -t $IMAGE .
+
+      # ---------------------------------------------------------------
+      # Snyk Container
+      # ---------------------------------------------------------------
+      - name: Snyk Container
+        continue-on-error: true
+        run: |
+          snyk container test $IMAGE --org=$SNYK_ORG --file=Dockerfile \
+            --severity-threshold=high \
+            --sarif-file-output=snyk-container.sarif \
+            --json-file-output=snyk-container.json
+
+      - name: Snyk Container HTML report
+        if: always() && hashFiles('snyk-container.json') != ''
+        continue-on-error: true
+        run: snyk-to-html -i snyk-container.json -o snyk-container.html
+
+      # Snapshot to the Snyk UI
+      - name: Snyk Container monitor
+        run: |
+          snyk container monitor $IMAGE --org=$SNYK_ORG --file=Dockerfile \
+            --target-reference="$BRANCH"
+
+      # ---------------------------------------------------------------
+      # Share results
+      # 1) GitHub Code Scanning (Security tab and PR annotations)
+      # 2) Downloadable artifacts (SARIF, JSON, HTML) for teams
+      # ---------------------------------------------------------------
+      - name: Upload Snyk Code SARIF
+        if: always() && hashFiles('snyk-code.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: snyk-code.sarif
+          category: snyk-code
+
+      - name: Upload Snyk Open Source SARIF
+        if: always() && hashFiles('snyk-oss.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: snyk-oss.sarif
+          category: snyk-open-source
+
+      - name: Upload Snyk IaC SARIF
+        if: always() && hashFiles('snyk-iac.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: snyk-iac.sarif
+          category: snyk-iac
+
+      - name: Upload Snyk Container SARIF
+        if: always() && hashFiles('snyk-container.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: snyk-container.sarif
+          category: snyk-container
+
+      - name: Upload Snyk reports as artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: snyk-reports
+          path: |
+            snyk-*.sarif
+            snyk-*.json
+            snyk-*.html
+          if-no-files-found: ignore
