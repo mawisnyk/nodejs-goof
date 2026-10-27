@@ -29,9 +29,6 @@ jobs:
 
       - name: Install Snyk CLI
         run: npm install -g snyk
-
-      - name: Show repo URL
-        run: echo "$REPO_URL"
         
       # Snyk Code: run before npm install so node_modules isn't scanned
       # Snyk Code test and UI snapshot
