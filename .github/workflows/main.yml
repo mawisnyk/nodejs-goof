@@ -47,15 +47,15 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      # Snyk SCA test and UI snapshot
+      # Snyk Open Source test and UI snapshot
       # To gate the build, remove continue-on-error from the step below.
       - name: Snyk Open Source
         continue-on-error: true
-        run: snyk test --org=$SNYK_ORG --severity-threshold=high
+        run: snyk test --org=$SNYK_ORG --severity-threshold=high --all-projects
 
       - name: Snyk Open Source monitor
         run: |
-          snyk monitor --org=$SNYK_ORG \
+          snyk monitor --org=$SNYK_ORG --all-projects \
             --remote-repo-url=$REPO_URL \
             --target-reference="$BRANCH"
             
