@@ -38,6 +38,7 @@ jobs:
 
       # ---------------------------------------------------------------
       # Snyk Code: run before npm install so node_modules isn't scanned
+      # To gate the build, remove continue-on-error from the step below.
       # Test + export (SARIF for Code Scanning, JSON for artifacts)
       # ---------------------------------------------------------------
       - name: Snyk Code
@@ -137,8 +138,7 @@ jobs:
 
       # ---------------------------------------------------------------
       # Share results
-      # 1) GitHub Code Scanning (Security tab and PR annotations)
-      # 2) Downloadable artifacts (SARIF, JSON, HTML) for teams
+      # Downloadable artifacts (SARIF, JSON, HTML) for teams
       # ---------------------------------------------------------------
       - name: Upload Snyk Code SARIF
         if: always() && hashFiles('snyk-code.sarif') != ''
