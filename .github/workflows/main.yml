@@ -29,9 +29,16 @@ jobs:
 
       - name: Install Snyk CLI
         run: npm install -g snyk
-        
-      # Snyk Code: run before npm install so node_modules isn't scanned
-      # Snyk Code test and UI snapshot
+
+      # ---------------------------------------------------------------
+      # Snyk Code (SAST)
+      # Scans YOUR first-party source code for vulnerabilities such as
+      # SQL injection, XSS, path traversal and insecure crypto, with
+      # data-flow detail showing how untrusted input reaches the issue.
+      # Runs before npm install so node_modules isn't scanned.
+      # Step 1 tests and prints results in the build log (high+ only).
+      # Step 2 (--report) uploads a snapshot to the Snyk UI.
+      # ---------------------------------------------------------------
       - name: Snyk Code
         continue-on-error: true
         run: snyk code test --org=$SNYK_ORG --severity-threshold=high
@@ -44,11 +51,42 @@ jobs:
             --remote-repo-url=$REPO_URL \
             --target-reference="$BRANCH"
 
+      # ---------------------------------------------------------------
+      # Snyk Secrets
+      # Scans plain-text files for hardcoded secrets such as API keys,
+      # passwords and tokens, using entropy checks, ML-based contextual
+      # analysis and regex patterns. Binaries and lock files are skipped.
+      # Also runs before npm install so node_modules isn't scanned.
+      # Exit code 1 means secrets were found. Any valid secret should be
+      # revoked and rotated, since Snyk can't revoke credentials for you.
+      # Requires the Secrets feature to be enabled for your Snyk org.
+      # Step 1 tests and prints results in the build log.
+      # Step 2 (--report) uploads a snapshot to the Snyk UI.
+      # ---------------------------------------------------------------
+      - name: Snyk Secrets
+        continue-on-error: true
+        run: snyk secrets test --org=$SNYK_ORG --severity-threshold=high
+
+      - name: Snyk Secrets snapshot
+        continue-on-error: true
+        run: |
+          snyk secrets test --org=$SNYK_ORG --report \
+            --target-name=$REPO_URL \
+            --target-reference="$BRANCH"
+
       - name: Install dependencies
         run: npm install
 
-      # Snyk Open Source test and UI snapshot
+      # ---------------------------------------------------------------
+      # Snyk Open Source (SCA)
+      # Scans third-party dependencies (from package.json and lockfiles)
+      # for known vulnerabilities and license issues, and suggests
+      # upgrade paths. Needs dependencies installed first.
+      # "snyk test" checks the build; "snyk monitor" saves a snapshot to
+      # the Snyk UI and alerts you when new vulnerabilities are
+      # disclosed for those dependencies later.
       # To gate the build, remove continue-on-error from the step below.
+      # ---------------------------------------------------------------
       - name: Snyk Open Source
         continue-on-error: true
         run: snyk test --org=$SNYK_ORG --severity-threshold=high --all-projects
@@ -58,8 +96,15 @@ jobs:
           snyk monitor --org=$SNYK_ORG --all-projects \
             --remote-repo-url=$REPO_URL \
             --target-reference="$BRANCH"
-            
-      # IaC test and UI snapshot
+
+      # ---------------------------------------------------------------
+      # Snyk IaC
+      # Scans infrastructure-as-code (Terraform, CloudFormation,
+      # Kubernetes manifests, ARM templates, etc.) for misconfigurations
+      # like open security groups, public storage or privileged
+      # containers, before they get deployed.
+      # Step 1 tests; step 2 (--report) uploads a snapshot to the UI.
+      # ---------------------------------------------------------------
       - name: Snyk IaC
         continue-on-error: true
         run: snyk iac test --org=$SNYK_ORG --severity-threshold=high
@@ -74,7 +119,14 @@ jobs:
       - name: Build Docker image
         run: docker build -t $IMAGE .
 
-      # Snyk Container test and UI snapshot
+      # ---------------------------------------------------------------
+      # Snyk Container
+      # Scans the built image for vulnerabilities in the base image, OS
+      # packages and application dependencies. Passing --file=Dockerfile
+      # lets Snyk recommend a better base image.
+      # "container test" checks the build; "container monitor" saves a
+      # snapshot to the Snyk UI for ongoing monitoring.
+      # ---------------------------------------------------------------
       - name: Snyk Container
         continue-on-error: true
         run: snyk container test $IMAGE --org=$SNYK_ORG --file=Dockerfile --severity-threshold=high
