@@ -44,6 +44,27 @@ jobs:
             --remote-repo-url=$REPO_URL \
             --target-reference=$BRANCH
 
+      # Snyk Secrets: scans plain-text files for hardcoded secrets; runs before npm install so node_modules isn't scanned
+      - name: Snyk Secrets
+        continue-on-error: true
+        run: snyk secrets test --org=${{ vars.SNYK_ORG }} --severity-threshold=high
+
+      # Test A: the flag we are checking. The Secrets docs list --target-name, not --remote-repo-url.
+      - name: Snyk Secrets snapshot (remote-repo-url test)
+        continue-on-error: true
+        run: |
+          snyk secrets test --org=${{ vars.SNYK_ORG }} --report \
+            --remote-repo-url=$REPO_URL \
+            --target-reference=$BRANCH
+
+      # Test B: the documented flag
+      - name: Snyk Secrets snapshot (target-name)
+        continue-on-error: true
+        run: |
+          snyk secrets test --org=${{ vars.SNYK_ORG }} --report \
+            --target-name=$REPO_URL \
+            --target-reference=$BRANCH
+
       # Step 4: Install the project's own dependencies (package.json) so Snyk can resolve them
       - name: Install dependencies
         run: npm install
@@ -93,5 +114,5 @@ jobs:
         continue-on-error: true
         run: |
           snyk container monitor --org=${{ vars.SNYK_ORG }} $IMAGE --file=Dockerfile \
-            --project-name=container \
+            --project-name="MyApps Container" \
             --target-reference="$BRANCH"
