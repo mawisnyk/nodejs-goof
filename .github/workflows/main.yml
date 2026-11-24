@@ -16,10 +16,9 @@ jobs:
       SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
       SNYK_ORG: ${{ vars.SNYK_ORG }}
       BRANCH: ${{ github.head_ref || github.ref_name }}
-      # CUSTOM repo URL. This is NOT the real git remote, so Snyk should create a
-      # separate target (shown in the UI as /mawisnyk/goof-two-branch-test/).
-      # Every step that uploads results must use this exact same value.
-      REPO_URL: https://github.com/mawisnyk/goof-two-branch-test
+      # Custom target name instead of the real git remote. Every step that uploads
+      # results must use this exact same value so all of them land on one target.
+      REPO_URL: MyApp
       IMAGE: nodejs-goof:${{ github.sha }}
 
     steps:
