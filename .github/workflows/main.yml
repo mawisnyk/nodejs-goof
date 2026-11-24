@@ -16,11 +16,12 @@ jobs:
       SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
       SNYK_ORG: ${{ vars.SNYK_ORG }}
       BRANCH: ${{ github.head_ref || github.ref_name }}
-      # Custom target name instead of the real git remote. Every step that uploads
-      # results must use this exact same value so all of them land on one target.
-      REPO_URL: MyApp
-      # Same image name on every branch: the container target is named after it
-      IMAGE: myapps-container:${{ github.sha }}
+      # CUSTOM target. Not the real git remote, but it must still be shaped like a
+      # git URL, because `snyk secrets test` rejects a bare name like "MyApp".
+      # Every step that uploads results must use this exact same
+      # value so Open Source, Code, IaC and Secrets all land on one target.
+      # The UI shows only the path part (/mawisnyk/MyApp/).
+      REPO_URL: https://github.com/mawisnyk/MyApp.git
 
     steps:
       - uses: actions/checkout@v5
@@ -70,24 +71,17 @@ jobs:
         continue-on-error: true
         run: snyk secrets test --org=$SNYK_ORG --severity-threshold=high
 
-      # Test A: the flag we are checking. The Secrets docs list --target-name, not --remote-repo-url.
-      - name: Snyk Secrets snapshot (remote-repo-url test)
+      # --remote-repo-url is validated for Secrets (must be a git URL). Using the
+      # same value as the other scans keeps Secrets on the same target.
+      - name: Snyk Secrets snapshot
         continue-on-error: true
         run: |
           snyk secrets test --org=$SNYK_ORG --report \
             --remote-repo-url=$REPO_URL \
             --target-reference="$BRANCH"
 
-      # Test B: the documented flag
-      - name: Snyk Secrets snapshot (target-name)
-        continue-on-error: true
-        run: |
-          snyk secrets test --org=$SNYK_ORG --report \
-            --target-name=$REPO_URL \
-            --target-reference="$BRANCH"
-
-      #- name: Install dependencies
-      #  run: npm install
+      - name: Install dependencies
+        run: npm install
 
       # ---------------------------------------------------------------
       # Snyk Open Source (SCA)
@@ -128,6 +122,10 @@ jobs:
             --remote-repo-url=$REPO_URL \
             --target-reference="$BRANCH"
 
+      # Same image name on every branch: the container target is named after it
+      - name: Set image name
+        run: echo "IMAGE=${GITHUB_REPOSITORY,,}-container:${GITHUB_SHA}" >> "$GITHUB_ENV"
+
       - name: Build Docker image
         run: docker build -t $IMAGE .
 
@@ -138,8 +136,9 @@ jobs:
       # lets Snyk recommend a better base image.
       # "container test" checks the build; "container monitor" saves a
       # snapshot to the Snyk UI for ongoing monitoring.
-      # Note: container monitor does not take --remote-repo-url, so its
-      # project will land on its own image-based target.
+      # Note: container monitor does not take --remote-repo-url. Its target is
+      # named after the image, so the image name (tag is ignored) must be the
+      # same on every branch for main and dev to share one container target.
       # ---------------------------------------------------------------
       - name: Snyk Container
         continue-on-error: true
