@@ -1,10 +1,11 @@
 name: Snyk CI/CD Demo
 
+# Two-branch test: run on pushes to main and dev so each branch reports to the
+# same Snyk target with its own target reference. pull_request is removed so
+# PR branch names don't create extra references while testing.
 on:
   push:
-    branches: ["dev"]
-  pull_request:
-    branches: ["main"]
+    branches: ["main", "dev"]
   workflow_dispatch:
 
 jobs:
@@ -15,8 +16,10 @@ jobs:
       SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
       SNYK_ORG: ${{ vars.SNYK_ORG }}
       BRANCH: ${{ github.head_ref || github.ref_name }}
-      # The URL must match the target Snyk derives from the git remote.
-      REPO_URL: github.com/${{ github.repository }}
+      # CUSTOM repo URL. This is NOT the real git remote, so Snyk should create a
+      # separate target (shown in the UI as /mawisnyk/goof-two-branch-test/).
+      # Every step that uploads results must use this exact same value.
+      REPO_URL: https://github.com/mawisnyk/goof-two-branch-test
       IMAGE: nodejs-goof:${{ github.sha }}
 
     steps:
@@ -126,6 +129,8 @@ jobs:
       # lets Snyk recommend a better base image.
       # "container test" checks the build; "container monitor" saves a
       # snapshot to the Snyk UI for ongoing monitoring.
+      # Note: container monitor does not take --remote-repo-url, so its
+      # project will land on its own image-based target.
       # ---------------------------------------------------------------
       - name: Snyk Container
         continue-on-error: true
