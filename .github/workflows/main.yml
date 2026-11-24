@@ -12,7 +12,7 @@ jobs:
     env:                       # Variables available to every step in this job
       SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}                  # Snyk auth token, read from repo secrets
       BRANCH: ${{ github.head_ref || github.ref_name }}                         # PR source branch, or the pushed branch on a push
-      REPO_URL: https://github.com/mawisnyk/goof-two-branch-test   # CUSTOM repo URL (not the real remote); must be identical on every uploading step
+      REPO_URL: MyApp   # Custom target name (not the real remote); must be identical on every uploading step
       IMAGE: github.com/mawidors/nodejs-goof:${{ github.sha }}                       # Name:tag of the image built from this repo's Dockerfile
 
     steps:
