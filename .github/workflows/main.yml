@@ -19,7 +19,8 @@ jobs:
       # Custom target name instead of the real git remote. Every step that uploads
       # results must use this exact same value so all of them land on one target.
       REPO_URL: MyApp
-      IMAGE: nodejs-goof:${{ github.sha }}
+      # Same image name on every branch: the container target is named after it
+      IMAGE: myapps-container:${{ github.sha }}
 
     steps:
       - uses: actions/checkout@v5
