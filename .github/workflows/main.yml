@@ -1,118 +1,151 @@
 name: Snyk CI/CD Demo
 
+# Two-branch test: run on pushes to main and dev so each branch reports to the
+# same Snyk target with its own target reference. pull_request is removed so
+# PR branch names don't create extra references while testing.
 on:
   push:
-    branches: ["main", "dev"]  # Runs when code is pushed to main or dev (pull_request removed for the two-branch test)
+    branches: ["main", "dev"]
   workflow_dispatch:
 
 jobs:
   security:
-    runs-on: ubuntu-latest     # Fresh GitHub-hosted Ubuntu VM (Node and Docker preinstalled)
+    runs-on: ubuntu-latest
 
-    env:                       # Variables available to every step in this job
-      SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}                  # Snyk auth token, read from repo secrets
-      BRANCH: ${{ github.head_ref || github.ref_name }}                         # PR source branch, or the pushed branch on a push
-      REPO_URL: MyApp   # Custom target name (not the real remote); must be identical on every uploading step
-      IMAGE: myapps-container:${{ github.sha }}   # Same image name on every branch: the container target is named after it
+    env:
+      SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+      SNYK_ORG: ${{ vars.SNYK_ORG }}
+      BRANCH: ${{ github.head_ref || github.ref_name }}
+      # CUSTOM target. Not the real git remote, but it must still be shaped like a
+      # git URL, because `snyk secrets test` rejects a bare name like "MyApp".
+      # Every step that uploads results must use this exact same
+      # value so Open Source, Code, IaC and Secrets all land on one target.
+      # The UI shows only the path part (/mawisnyk/MyApp/).
+      REPO_URL: https://github.com/mawisnyk/MyApp.git
 
     steps:
-      # Step 1: Pull this repo's code onto the runner
       - uses: actions/checkout@v5
 
-      # Step 2: Install Node.js (needed to resolve dependencies and to install the Snyk CLI)
       - name: Set up Node
         uses: actions/setup-node@v5
         with:
           node-version: '24'
 
-      # Step 3: Install the Snyk CLI globally so `snyk` works in later steps
       - name: Install Snyk CLI
         run: npm install -g snyk
 
-      # Snyk Code (SAST): run before npm install so node_modules isn't scanned
-      # continue-on-error: true keeps the pipeline green even if issues are found
-      - name: Snyk Code
-        continue-on-error: true
-        run: snyk code test --org=${{ vars.SNYK_ORG }} --severity-threshold=high
-
-      # Snyk Code snapshot: sends results to the Snyk UI, tagged with the branch
-      - name: Snyk Code snapshot
-        continue-on-error: true
-        run: |
-          snyk code test --org=${{ vars.SNYK_ORG }} --severity-threshold=high --report \
-            --project-name=code-analysis \
-            --remote-repo-url=$REPO_URL \
-            --target-reference=$BRANCH
-
-      # Snyk Secrets: scans plain-text files for hardcoded secrets; runs before npm install so node_modules isn't scanned
-      - name: Snyk Secrets
-        continue-on-error: true
-        run: snyk secrets test --org=${{ vars.SNYK_ORG }} --severity-threshold=high
-
-      # Test A: the flag we are checking. The Secrets docs list --target-name, not --remote-repo-url.
-      - name: Snyk Secrets snapshot (remote-repo-url test)
-        continue-on-error: true
-        run: |
-          snyk secrets test --org=${{ vars.SNYK_ORG }} --report \
-            --remote-repo-url=$REPO_URL \
-            --target-reference=$BRANCH
-
-      # Test B: the documented flag
-      - name: Snyk Secrets snapshot (target-name)
-        continue-on-error: true
-        run: |
-          snyk secrets test --org=${{ vars.SNYK_ORG }} --report \
-            --target-name=$REPO_URL \
-            --target-reference=$BRANCH
-
-      # Step 4: Install the project's own dependencies (package.json) so Snyk can resolve them
       - name: Install dependencies
         run: npm install
 
-      # Snyk Open Source (SCA) test
-      # `|| true` means this step never fails the pipeline, even if issues are found
+      # ---------------------------------------------------------------
+      # Snyk Open Source (SCA)
+      # Scans third-party dependencies (from package.json and lockfiles)
+      # for known vulnerabilities and license issues, and suggests
+      # upgrade paths. Needs dependencies installed first.
+      # "snyk test" checks the build; "snyk monitor" saves a snapshot to
+      # the Snyk UI and alerts you when new vulnerabilities are
+      # disclosed for those dependencies later.
+      # To gate the build, remove continue-on-error from the step below.
+      # ---------------------------------------------------------------
       - name: Snyk Open Source
         continue-on-error: true
-        run: snyk test --org=${{ vars.SNYK_ORG }} --severity-threshold=high --all-projects
+        run: snyk test --org=$SNYK_ORG --severity-threshold=high --all-projects
 
-      # To fail the build on High/Critical issues, delete the step above and uncomment this one
-      #- name: Snyk Open Source (gating)
-      #  run: snyk test --org=${{ vars.SNYK_ORG }} --severity-threshold=high
-
-      # Snyk Open Source monitor: snapshot to the Snyk UI for ongoing monitoring
       - name: Snyk Open Source monitor
         run: |
-          snyk monitor --org=${{ vars.SNYK_ORG }} --all-projects \
+          snyk monitor --org=$SNYK_ORG --all-projects \
             --remote-repo-url=$REPO_URL \
-            --target-reference=$BRANCH 
+            --target-reference="$BRANCH"
 
-      # Snyk IaC: scans Terraform/Kubernetes/etc. files in the repo (finds nothing if there are none)
+      # ---------------------------------------------------------------
+      # Snyk IaC
+      # Scans infrastructure-as-code (Terraform, CloudFormation,
+      # Kubernetes manifests, ARM templates, etc.) for misconfigurations
+      # like open security groups, public storage or privileged
+      # containers, before they get deployed.
+      # Step 1 tests; step 2 (--report) uploads a snapshot to the UI.
+      # ---------------------------------------------------------------
       - name: Snyk IaC
         continue-on-error: true
-        run: snyk iac test --org=${{ vars.SNYK_ORG }} --severity-threshold=high
+        run: snyk iac test --org=$SNYK_ORG --severity-threshold=high
 
-      # Snyk IaC snapshot: IaC has no `monitor`, so --report sends results to the Snyk UI
       - name: Snyk IaC snapshot
         continue-on-error: true
         run: |
-          snyk iac test --org=${{ vars.SNYK_ORG }} --report \
+          snyk iac test --org=$SNYK_ORG --report \
             --remote-repo-url=$REPO_URL \
-            --target-reference=$BRANCH 
+            --target-reference="$BRANCH"
 
-      # Build the image from the Dockerfile in this repo's root; this is the image Snyk scans
+      # ---------------------------------------------------------------
+      # Snyk Code (SAST)
+      # Scans YOUR first-party source code for vulnerabilities such as
+      # SQL injection, XSS, path traversal and insecure crypto, with
+      # data-flow detail showing how untrusted input reaches the issue.
+      # Runs before npm install so node_modules isn't scanned.
+      # Step 1 tests and prints results in the build log (high+ only).
+      # Step 2 (--report) uploads a snapshot to the Snyk UI.
+      # ---------------------------------------------------------------
+      - name: Snyk Code
+        continue-on-error: true
+        run: snyk code test --org=$SNYK_ORG --severity-threshold=high
+
+      - name: Snyk Code snapshot
+        continue-on-error: true
+        run: |
+          snyk code test --org=$SNYK_ORG --report \
+            --project-name=code-analysis \
+            --remote-repo-url=$REPO_URL \
+            --target-reference="$BRANCH"
+
+      # ---------------------------------------------------------------
+      # Snyk Secrets
+      # Scans plain-text files for hardcoded secrets such as API keys,
+      # passwords and tokens, using entropy checks, ML-based contextual
+      # analysis and regex patterns. Binaries and lock files are skipped.
+      # Also runs before npm install so node_modules isn't scanned.
+      # Exit code 1 means secrets were found. Any valid secret should be
+      # revoked and rotated, since Snyk can't revoke credentials for you.
+      # Requires the Secrets feature to be enabled for your Snyk org.
+      # Step 1 tests and prints results in the build log.
+      # Step 2 (--report) uploads a snapshot to the Snyk UI.
+      # ---------------------------------------------------------------
+      - name: Snyk Secrets
+        continue-on-error: true
+        run: snyk secrets test --org=$SNYK_ORG --severity-threshold=high
+
+      # --remote-repo-url is validated for Secrets (must be a git URL). Using the
+      # same value as the other scans keeps Secrets on the same target.
+      - name: Snyk Secrets snapshot
+        continue-on-error: true
+        run: |
+          snyk secrets test --org=$SNYK_ORG --report \
+            --remote-repo-url=$REPO_URL \
+            --target-reference="$BRANCH"
+
+      # Same image name on every branch: the container target is named after it
+      - name: Set image name
+        run: echo "IMAGE=${GITHUB_REPOSITORY,,}-container:${GITHUB_SHA}" >> "$GITHUB_ENV"
+
       - name: Build Docker image
         run: docker build -t $IMAGE .
 
-      # Snyk Container: scans the built image, including its base image
-      # --file=Dockerfile lets Snyk give base image upgrade recommendations
+      # ---------------------------------------------------------------
+      # Snyk Container
+      # Scans the built image for vulnerabilities in the base image, OS
+      # packages and application dependencies. Passing --file=Dockerfile
+      # lets Snyk recommend a better base image.
+      # "container test" checks the build; "container monitor" saves a
+      # snapshot to the Snyk UI for ongoing monitoring.
+      # Note: container monitor does not take --remote-repo-url. Its target is
+      # named after the image, so the image name (tag is ignored) must be the
+      # same on every branch for main and dev to share one container target.
+      # ---------------------------------------------------------------
       - name: Snyk Container
         continue-on-error: true
-        run: snyk container test --org=${{ vars.SNYK_ORG }} $IMAGE --file=Dockerfile --severity-threshold=high
+        run: snyk container test $IMAGE --org=$SNYK_ORG --file=Dockerfile --severity-threshold=high
 
-      # Snyk Container monitor: snapshot of the image to the Snyk UI
       - name: Snyk Container monitor
-        continue-on-error: true
         run: |
-          snyk container monitor --org=${{ vars.SNYK_ORG }} $IMAGE --file=Dockerfile \
+          snyk container monitor $IMAGE --org=$SNYK_ORG --file=Dockerfile \
             --project-name="MyApps Container" \
             --target-reference="$BRANCH"
