@@ -34,6 +34,48 @@ jobs:
       - name: Install Snyk CLI
         run: npm install -g snyk
 
+      - name: Install dependencies
+        run: npm install
+
+      # ---------------------------------------------------------------
+      # Snyk Open Source (SCA)
+      # Scans third-party dependencies (from package.json and lockfiles)
+      # for known vulnerabilities and license issues, and suggests
+      # upgrade paths. Needs dependencies installed first.
+      # "snyk test" checks the build; "snyk monitor" saves a snapshot to
+      # the Snyk UI and alerts you when new vulnerabilities are
+      # disclosed for those dependencies later.
+      # To gate the build, remove continue-on-error from the step below.
+      # ---------------------------------------------------------------
+      - name: Snyk Open Source
+        continue-on-error: true
+        run: snyk test --org=$SNYK_ORG --severity-threshold=high --all-projects
+
+      - name: Snyk Open Source monitor
+        run: |
+          snyk monitor --org=$SNYK_ORG --all-projects \
+            --remote-repo-url=$REPO_URL \
+            --target-reference="$BRANCH"
+
+      # ---------------------------------------------------------------
+      # Snyk IaC
+      # Scans infrastructure-as-code (Terraform, CloudFormation,
+      # Kubernetes manifests, ARM templates, etc.) for misconfigurations
+      # like open security groups, public storage or privileged
+      # containers, before they get deployed.
+      # Step 1 tests; step 2 (--report) uploads a snapshot to the UI.
+      # ---------------------------------------------------------------
+      - name: Snyk IaC
+        continue-on-error: true
+        run: snyk iac test --org=$SNYK_ORG --severity-threshold=high
+
+      - name: Snyk IaC snapshot
+        continue-on-error: true
+        run: |
+          snyk iac test --org=$SNYK_ORG --report \
+            --remote-repo-url=$REPO_URL \
+            --target-reference="$BRANCH"
+
       # ---------------------------------------------------------------
       # Snyk Code (SAST)
       # Scans YOUR first-party source code for vulnerabilities such as
@@ -77,48 +119,6 @@ jobs:
         continue-on-error: true
         run: |
           snyk secrets test --org=$SNYK_ORG --report \
-            --remote-repo-url=$REPO_URL \
-            --target-reference="$BRANCH"
-
-      - name: Install dependencies
-        run: npm install
-
-      # ---------------------------------------------------------------
-      # Snyk Open Source (SCA)
-      # Scans third-party dependencies (from package.json and lockfiles)
-      # for known vulnerabilities and license issues, and suggests
-      # upgrade paths. Needs dependencies installed first.
-      # "snyk test" checks the build; "snyk monitor" saves a snapshot to
-      # the Snyk UI and alerts you when new vulnerabilities are
-      # disclosed for those dependencies later.
-      # To gate the build, remove continue-on-error from the step below.
-      # ---------------------------------------------------------------
-      - name: Snyk Open Source
-        continue-on-error: true
-        run: snyk test --org=$SNYK_ORG --severity-threshold=high --all-projects
-
-      - name: Snyk Open Source monitor
-        run: |
-          snyk monitor --org=$SNYK_ORG --all-projects \
-            --remote-repo-url=$REPO_URL \
-            --target-reference="$BRANCH"
-
-      # ---------------------------------------------------------------
-      # Snyk IaC
-      # Scans infrastructure-as-code (Terraform, CloudFormation,
-      # Kubernetes manifests, ARM templates, etc.) for misconfigurations
-      # like open security groups, public storage or privileged
-      # containers, before they get deployed.
-      # Step 1 tests; step 2 (--report) uploads a snapshot to the UI.
-      # ---------------------------------------------------------------
-      - name: Snyk IaC
-        continue-on-error: true
-        run: snyk iac test --org=$SNYK_ORG --severity-threshold=high
-
-      - name: Snyk IaC snapshot
-        continue-on-error: true
-        run: |
-          snyk iac test --org=$SNYK_ORG --report \
             --remote-repo-url=$REPO_URL \
             --target-reference="$BRANCH"
 
