@@ -16,7 +16,12 @@ jobs:
       SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
       SNYK_ORG: ${{ vars.SNYK_ORG }}
       BRANCH: ${{ github.head_ref || github.ref_name }}
-      # No --remote-repo-url anywhere: the CLI uses the real git remote from the checkout.
+      # CUSTOM target. Not the real git remote, but it must still be shaped like a
+      # git URL, because `snyk secrets test` rejects a bare name like "MyApp".
+      # Every step that uploads results must use this exact same
+      # value so Open Source, Code, IaC and Secrets all land on one target.
+      # The UI shows only the path part (/mawisnyk/MyApp/).
+      REPO_URL: https://github.com/mawisnyk/MyApp.git
 
     steps:
       - uses: actions/checkout@v5
@@ -49,6 +54,7 @@ jobs:
       - name: Snyk Open Source monitor
         run: |
           snyk monitor --org=$SNYK_ORG --all-projects \
+            --remote-repo-url=$REPO_URL \
             --target-reference="$BRANCH"
 
       # ---------------------------------------------------------------
@@ -67,6 +73,7 @@ jobs:
         continue-on-error: true
         run: |
           snyk iac test --org=$SNYK_ORG --report \
+            --remote-repo-url=$REPO_URL \
             --target-reference="$BRANCH"
 
       # ---------------------------------------------------------------
@@ -87,6 +94,7 @@ jobs:
         run: |
           snyk code test --org=$SNYK_ORG --report \
             --project-name=code-analysis \
+            --remote-repo-url=$REPO_URL \
             --target-reference="$BRANCH"
 
       # ---------------------------------------------------------------
@@ -111,6 +119,7 @@ jobs:
         continue-on-error: true
         run: |
           snyk secrets test --org=$SNYK_ORG --report \
+            --remote-repo-url=$REPO_URL \
             --target-reference="$BRANCH"
 
       # Same image name on every branch: the container target is named after it
