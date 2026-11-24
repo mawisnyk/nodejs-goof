@@ -65,16 +65,25 @@ jobs:
       # Step 1 tests and prints results in the build log.
       # Step 2 (--report) uploads a snapshot to the Snyk UI.
       # ---------------------------------------------------------------
-      #- name: Snyk Secrets
-      #  continue-on-error: true
-      #  run: snyk secrets test --org=$SNYK_ORG --severity-threshold=high
+      - name: Snyk Secrets
+        continue-on-error: true
+        run: snyk secrets test --org=$SNYK_ORG --severity-threshold=high
 
-      #- name: Snyk Secrets snapshot
-      #  continue-on-error: true
-      #  run: |
-      #    snyk secrets test --org=$SNYK_ORG --report \
-      #      --target-name=$REPO_URL \
-      #      --target-reference="$BRANCH"
+      # Test A: the flag we are checking. The Secrets docs list --target-name, not --remote-repo-url.
+      - name: Snyk Secrets snapshot (remote-repo-url test)
+        continue-on-error: true
+        run: |
+          snyk secrets test --org=$SNYK_ORG --report \
+            --remote-repo-url=$REPO_URL \
+            --target-reference="$BRANCH"
+
+      # Test B: the documented flag
+      - name: Snyk Secrets snapshot (target-name)
+        continue-on-error: true
+        run: |
+          snyk secrets test --org=$SNYK_ORG --report \
+            --target-name=$REPO_URL \
+            --target-reference="$BRANCH"
 
       #- name: Install dependencies
       #  run: npm install
@@ -138,4 +147,5 @@ jobs:
       - name: Snyk Container monitor
         run: |
           snyk container monitor $IMAGE --org=$SNYK_ORG --file=Dockerfile \
+            --project-name="MyApps Container" \
             --target-reference="$BRANCH"
